@@ -1,0 +1,392 @@
+preset=$1
+pipw=spi
+
+write_setup() {
+
+echo 'if [ $(tty) == /dev/tty1 ]; then
+/usr/bin/setup
+pkill login
+fi' >> /rootfs/root/.bashrc
+
+echo 'if [ $(tty) == /dev/tty1 ]; then
+/usr/bin/setup
+kill -9 `ps aux | grep tty1 | awk ' { print \$2 } '`
+fi' >> /rootfs/home/pi/.bashrc
+chroot /rootfs sed -i "s/awk \( { print $. }\)/awk '\1 '/p" /home/pi/.bashrc
+
+
+echo '#!/bin/bash
+
+function url {
+        dialog --clear\
+                        --backtitle "Default url during Autostart"\
+                        --title "Url setup"\
+                        --inputbox "Please enter the url" 8 30 2>/tmp/tmpurl
+
+        relvar=$?
+        case $relvar in
+                0)
+                        i=`cat /tmp/tmpurl`
+                        if [ -z "$i" ]; then
+                                        exit
+                        fi
+                        sed -i "s/kiosk.*\(..execute\)/kiosk $i\1/g" /home/pi/.config/openbox/menu.xml 
+                        echo chromium --kiosk $i > /home/pi/.config/openbox/chromium_kiosk
+                        echo firefox $i  > /home/pi/.config/openbox/firefox
+                        echo chromium $i > /home/pi/.config/openbox/chromium
+                        echo midori $i > /home/pi/.config/openbox/midori
+                        chown pi:pi /home/pi/.config/openbox -R
+                        echo "The setting will work after a restart"
+                ;;
+                1|255)
+                        exit
+                ;;
+        esac
+}
+
+function exit_setup {
+#       echo exititng
+#       if [ $(tty) == /dev/tty1 ]; then
+#               pkill login
+#       fi
+exit
+}
+
+function mainmenu {
+    dialog  --backtitle "Setup"\
+            --title "Mainmenu"\
+            --menu "Hi! Choose an option:" 15 30 10\
+                "1" "Set static ip" \
+                "2" "Set dynamic ip" \
+                "3" "Restart Network"\
+                "4" "Enable vnc server"\
+                "5" "Disable vnc server"\
+                "6" "Set VNC password"\
+                "7" "Set Default url"\
+                "8" "Power off"\
+                "9" "Reboot"\
+                "0" "Exit"  2> $tempfile
+            
+    retval=$?
+    case $retval in
+        0)
+            choice=`cat $tempfile`
+            case $choice in
+                1)
+                    staticip
+                ;;
+                2)
+                    dynamicip
+                ;;
+                3)
+                    restartnetwork
+                ;;
+                4)
+                    startvnc
+                ;;
+                5)
+                    stopvnc
+                ;;
+                6)
+                    vncpass
+                ;;
+                7)
+                    url
+                    mainmenu
+                ;;
+                8)
+                    poweroff
+                ;;
+                9)
+                    reboot
+                ;;
+                *)
+                    exit_setup
+            esac
+            ;;
+        1|255)
+            clear
+            exit_setup
+            ;;
+    esac
+    exit_setup
+}
+
+function ipgateway {
+    dialog  --clear\
+            --backtitle "Static Ip" \
+            --title "IP" \
+            --inputbox "Enter the Gateway" 8 30 2>$tempfile
+
+    retval=$?
+    case $retval in
+        0)
+        gate=`cat $tempfile`
+        echo $ip $mask $gate 
+        echo "auto lo
+iface lo inet loopback
+auto eth0
+iface eth0 inet static
+    address $ip
+    netmask $mask
+    gateway $gate" > $interface
+    restartnetwork
+        mainmenu
+    ;;
+        1|255)
+        mainmenu
+    ;;
+    esac
+    exit_setup
+}
+
+function netmask {
+    dialog  --clear\
+            --backtitle "Static Ip" \
+            --title "IP" \
+            --inputbox "Enter the NetMask" 8 30 2>$tempfile
+
+    retval=$?
+    case $retval in
+        0)
+        mask=`cat $tempfile`
+        ipgateway
+    ;;
+        1|255)
+        mainmenu
+    ;;
+    esac
+    exit_setup
+}
+
+function staticip {
+    dialog  --clear\
+            --backtitle "Static Ip" \
+            --title "IP" \
+            --inputbox "Enter the Ip" 8 30 2>$tempfile
+
+    retval=$?
+    case $retval in
+        0)
+        ip=`cat $tempfile`
+        netmask
+    ;;
+        1|255)
+        mainmenu
+    ;;
+    esac
+    exit_setup
+}
+
+function dynamicip {
+    echo "auto lo
+iface lo inet loopback
+auto eth0
+iface eth0 inet dhcp" > $interface
+        restartnetwork
+}
+
+function restartnetwork {
+    nohup service networking restart > /dev/null
+    mainmenu
+}
+
+function startvnc {
+    nohup kill -9 `ps aux | grep x11vnc | awk ' { print \$2 }' ` > /dev/null
+    su pi -c "x11vnc --display :0 -rfbauth /home/pi/.vncpass > /dev/null 2>&1" &
+    mainmenu
+}
+
+function stopvnc {
+    nohup kill -9 `ps aux | grep x11vnc | awk ' { print \$2 }' ` > /dev/null
+    mainmenu
+}
+
+function vncpass {
+    dialog  --clear\
+            --backtitle "VNC Password" \
+            --title "New Password" \
+            --passwordbox "Enter the Password" 8 30 2>$tempfile
+
+    retval=$?
+    case $retval in
+        0)
+        pass1=`cat $tempfile`
+        vncpass2
+    ;;
+        1|255)
+        mainmenu
+    ;;
+    esac
+    exit_setup
+}
+
+function vncpass2 {
+    dialog  --clear\
+            --backtitle "VNC Password" \
+            --title "New Password" \
+            --passwordbox "Enter the Password again" 8 30 2>$tempfile
+
+    retval=$?
+    case $retval in
+        0)
+        pass2=`cat $tempfile`
+        if [ "$pass1" = "$pass2" ] ; then
+            dialog --clear \
+                --backtitle "VNC Password" \
+                --title "Alert"\
+                --msgbox "The password has been changed" 5 40
+                x11vnc -storepasswd "$pass1" /home/pi/.vncpass
+                chmod 644 /home/pi/.vncpass
+                mainmenu
+        else
+            dialog --clear \
+                --backtitle "VNC Password" \
+                --title "Error"\
+                --msgbox "The password do not match" 5 30
+                mainmenu
+        fi
+    ;;
+        1|255)
+        mainmenu
+    ;;
+    esac
+    exit_setup
+}
+
+ROOT_UID=0
+
+if [ $UID != $ROOT_UID ]; then
+        url
+else
+        tempfile=/tmp/tempfile
+        interface=/etc/network/interfaces
+        passfile=/home/pi/.vnc/passwd
+        mainmenu
+fi' > /rootfs/usr/bin/setup
+chroot /rootfs chmod +x /usr/bin/setup
+chroot /rootfs sed -i "s/awk \( { print $. }\)/awk '\1 '/p" /usr/bin/setup
+}
+
+write_menu() {
+	chroot /rootfs/ chown -R pi.pi /home/pi/.config/
+	echo '<?xml version="1.0" encoding="UTF-8"?>
+
+<openbox_menu xmlns="http://openbox.org/"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://openbox.org/
+                file:///usr/share/openbox/menu.xsd">
+
+<menu id="root-menu" label="Openbox 3">
+  <item label="Firefox Browser">
+    <action name="Execute"><execute>firefox</execute></action>
+  </item>
+  <item label="Chromium Browser">
+    <action name="Execute"><execute>chromium-browser</execute></action>
+  </item>
+  <item label="Midori Browser">
+    <action name="Execute"><execute>midori</execute></action>
+  </item>
+  <item label="Chromium Kiosk Mode">
+    <action name="Execute"><execute>chromium --kiosk subisu.net.np</execute></action>
+  </item>
+  <!-- This requires the presence of the 'menu' package to work -->
+  <!-- <menu id="/Debian" /> -->
+  <!-- 
+  <separator />
+  <menu id="client-list-menu" />
+  -->
+  <seperator />
+  <menu id="autostart" label="Default Browser">
+  <item label="Firefox Browser">
+    <action name="Execute"><execute>/home/pi/.config/openbox/autostart_script.sh firefox</execute></action>
+  </item>
+  <item label="Chromium Browser">
+    <action name="Execute"><execute>/home/pi/.config/openbox/autostart_script.sh chromium</execute></action>
+  </item>
+  <item label="Midori Browser">
+    <action name="Execute"><execute>/home/pi/.config/openbox/autostart_script.sh midori</execute></action>
+  </item>
+  <item label="Chromium Kiosk Mode">
+    <action name="Execute"><execute>/home/pi/.config/openbox/autostart_script.sh chromium_kiosk</execute></action>
+  </item> 
+  </menu>
+  <separator />
+  <menu id="openbox" label="Openbox">
+  <item label="ObConf">
+    <action name="Execute"><execute>obconf</execute></action>
+  </item>
+  <item label="Resolution">
+    <action name="Execute"><execute>lxrandr</execute></action>
+  </item>
+  <item label="Reconfigure">
+    <action name="Reconfigure" />
+  </item>
+  <item label="Restart">
+    <action name="Restart" />
+  </item>
+  </menu>
+  <separator />
+  <item label="Exit">
+    <action name="Exit" />
+  </item>
+</menu>
+
+</openbox_menu>' > /rootfs/home/pi/.config/openbox/menu.xml
+
+}
+
+common () {
+	chroot /rootfs/ sed -i "s/^\(.:.*respawn.*tty[2-6]\)/#\1/g" /etc/inittab
+	chroot /rootfs/ sed -i "s/#session-cleanup-script=/session-cleanup-script=\/sbin\/poweroff/g" /etc/lightdm/lightdm.conf
+	chroot /rootfs/ sed -i "s/#autologin-user=$/autologin-user=pi/g" /etc/lightdm/lightdm.conf
+	chroot /rootfs/ sed -i "s/#autologin-user-timeout=0/autologin-user-timeout=0/g" /etc/lightdm/lightdm.conf
+	# create user pi and set password
+	chroot /rootfs /usr/sbin/useradd -m -G users -s /bin/bash pi
+	echo -n pi:$pipw | chroot /rootfs /usr/sbin/chpasswd || fail
+	
+	
+	# write setup script that can be run to cofigure pi
+	write_setup
+}
+
+chrome_confs () {
+	mkdir -p /rootfs/home/pi/.config/openbox
+	write_menu
+	echo "chromium --kiosk subisu.net.np" > /rootfs/home/pi/.config/openbox/chromium_kiosk
+	chroot /rootfs/ rm -f /home/pi/.config/openbox/autostart
+	chroot /rootfs/ ln -s /home/pi/.config/openbox/chromium_kiosk /home/pi/.config/openbox/autostart
+	chroot /rootfs/ sed -i '9,42d' /home/pi/.config/openbox/menu.xml
+    chroot /rootfs/ chown pi:pi /home/pi/.config/openbox -R
+}
+
+sinage_confs () {
+	mkdir -p /rootfs/home/pi/.config/openbox
+	
+	write_menu
+	echo "chromium --kiosk subisu.net.np" > /rootfs/home/pi/.config/openbox/chromium_kiosk
+	echo "chromium subisu.net.np" > /rootfs/home/pi/.config/openbox/chromium
+	echo "firefox subisu.net.np" > /rootfs/home/pi/.config/openbox/firefox
+	echo "midori subisu.net.np" > /rootfs/home/pi/.config/openbox/midori
+	chroot /rootfs/ rm -f /home/pi/.config/openbox/autostart
+	chroot /rootfs/ ln -s /home/pi/.config/openbox/chromium_kiosk /home/pi/.config/openbox/autostart
+    chroot /rootfs/ chown pi:pi /home/pi/.config/openbox -R
+}
+
+case $preset in
+        minimal)
+            ;;
+        base)
+            ;;
+        sinage-chrome)
+			common
+			chrome_confs
+			;;
+		sinage)
+			common
+			sinage_confs
+			;;
+        *)
+            ;;
+esac
+reboot

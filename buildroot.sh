@@ -33,7 +33,7 @@ if [ $losetup_lt_2_22 ] ; then
 kpartx -as $IMG || exit
 mkfs.vfat /dev/mapper/loop0p1 || exit
 mount /dev/mapper/loop0p1 /mnt || exit
-cp bootfs/* /mnt/ || exit
+cp -r bootfs/* /mnt/ || exit
 umount /mnt || exit
 kpartx -d $IMG
 
@@ -44,7 +44,7 @@ losetup -D || exit
 losetup -P /dev/loop0 $IMG || exit
 mkfs.vfat /dev/loop0p1 || exit
 mount /dev/loop0p1 /mnt || exit
-cp bootfs/* /mnt/ || exit
+cp -r bootfs/* /mnt/ || exit
 umount /mnt || exit
 losetup -D
 

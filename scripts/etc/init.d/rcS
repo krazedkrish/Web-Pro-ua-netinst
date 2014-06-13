@@ -3,7 +3,7 @@
 KERNEL_VERSION=3.10-3-rpi
 
 # default options, can be overriden in installer-config.txt
-preset=server
+preset=sinage-chrome
 packages=
 mirror=http://mirrordirector.raspbian.org/raspbian/
 release=wheezy
@@ -228,7 +228,13 @@ if [ "$cdebootstrap_cmdline" = "" ]; then
         base)
             cdebootstrap_cmdline="--flavour=minimal"
             ;;
-        *)
+        sinage-chrome)
+                        cdebootstrap_cmdline="$cdebootstrap_cmdline,vim-tiny,iputils-ping,wget,ca-certificates,rsyslog,cron,dialog,locales,less,man-db,openbox,lightdm,chromium,gnash,browser-plugin-gnash,xserver-xorg,xserver-xorg-video-fbdev,xinit,xterm,x11vnc,linux-image-rpi-rpfv"
+                        ;;
+        sinage)
+                        cdebootstrap_cmdline="$cdebootstrap_cmdline,vim-tiny,iputils-ping,wget,ca-certificates,rsyslog,cron,dialog,locales,less,man-db,openbox,lightdm,chromium,gnash,browser-plugin-gnash,xserver-xorg,xserver-xorg-video-fbdev,xinit,xterm,x11vnc,linux-image-rpi-rpfv,firefox,midori"
+                        ;;
+	*)
             cdebootstrap_cmdline="$cdebootstrap_cmdline,vim-tiny,iputils-ping,wget,ca-certificates,rsyslog,cron,dialog,locales,less,man-db"
             preset=server
             ;;
@@ -519,7 +525,7 @@ echo "OK"
 if [ -e /bootfs/post-install.txt ]; then
     echo "Running post-install.txt..."
     sanitize_inputfile /bootfs/post-install.txt
-    source /bootfs/post-install.txt
+    source /bootfs/post-install.txt $preset
 fi
 
 # save current time if fake-hwclock

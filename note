@@ -1,0 +1,10 @@
+Install latest kernel and firmware package:
+
+Code: Select all
+    apt-get update && apt-get install linux-image-rpi-rpfv raspberrypi-bootloader-nokernel
+
+
+Replace old kernel.img with latest kernel:
+
+Code: Select all
+    cp /vmlinuz /boot/kernel.img
